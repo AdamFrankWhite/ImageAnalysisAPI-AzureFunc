@@ -47,10 +47,15 @@ namespace ImageAnalyserFunction
 
                 var accessKey = config["AWS_ACCESS_KEY"];
                 var secretKey = config["AWS_SECRET_KEY"];
-                    var region = config["AWS_REGION"];
-                
+                var region = config["AWS_REGION"];
+                log.LogInformation($"Access Key: {accessKey}, Secret Key: {secretKey}, Region: {region}");
 
-         
+                if (string.IsNullOrEmpty(accessKey) || string.IsNullOrEmpty(secretKey) || string.IsNullOrEmpty(region))
+                {
+                    throw new InvalidOperationException("AWS credentials or region not configured.");
+                }
+
+
                 var credentials = new Amazon.Runtime.BasicAWSCredentials(accessKey, secretKey);
                 rekognitionClient = new AmazonRekognitionClient(credentials, RegionEndpoint.GetBySystemName(region));
 
