@@ -14,6 +14,8 @@ namespace ImageAnalysisAPI.models {
         [BsonRepresentation(BsonType.ObjectId)]
         public string? Id { get; set; }
 
+        [BsonElement("OwnerId")]
+        public string OwnerId { get; set; } = "owner";
         [BsonElement("Filename")]
         public string Filename { get; set; } = null!;
         [BsonElement("ImageUrl")]
