@@ -1,6 +1,7 @@
 using Amazon;
 using Amazon.Rekognition;
 using Amazon.Rekognition.Model;
+using ImageAnalysisAPI;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
@@ -8,9 +9,11 @@ using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Xml.Serialization;
 
@@ -48,7 +51,6 @@ namespace ImageAnalyserFunction
                 var accessKey = config["AWS_ACCESS_KEY"];
                 var secretKey = config["AWS_SECRET_KEY"];
                 var region = config["AWS_REGION"];
-                log.LogInformation($"Access Key: {accessKey}, Secret Key: {secretKey}, Region: {region}");
 
                 if (string.IsNullOrEmpty(accessKey) || string.IsNullOrEmpty(secretKey) || string.IsNullOrEmpty(region))
                 {
@@ -62,16 +64,46 @@ namespace ImageAnalyserFunction
                 var file = req.Form.Files[0];
                 var imageBytes = await ReadImageFile(file);
 
-                var labelResponse = await DetectLabels(imageBytes);
+                //var labelResponse = await DetectLabels(imageBytes);
                 var moderationResponse = await DetectModerationLabels(imageBytes);
 
                 var result = new DetectionResult
                 {
-                    Labels = labelResponse.Labels,
+                    //Labels = labelResponse.Labels,
                     ExplicitContent = moderationResponse.ModerationLabels
                 };
 
-                return new OkObjectResult(result);
+                List<ExplicitCategory> explicitCategories = new List<ExplicitCategory>();
+                List<ExplicitCategory> explicitParentCategories = new List<ExplicitCategory>();
+                foreach (var moderationLabel in result.ExplicitContent)
+                {
+                    // extract secondary moderation labels to list
+                    if (!explicitCategories.Any(item => item.Name == moderationLabel.Name) && !moderationLabel.ParentName.Equals(""))
+                    {
+                        ExplicitCategory explicitCategory = new ExplicitCategory();
+                        explicitCategory.Name = moderationLabel.Name;
+                        explicitCategory.Confidence = moderationLabel.Confidence;
+                        explicitCategories.Add(explicitCategory);
+                    }
+
+                    // extract parent moderation labels to list
+                    if (!explicitParentCategories.Any(item => item.Name == moderationLabel.ParentName) && moderationLabel.ParentName.Equals(""))
+                    {
+                        ExplicitCategory explicitParentCategory = new ExplicitCategory();
+                        explicitParentCategory.Name = moderationLabel.Name;
+                        explicitParentCategory.Confidence = moderationLabel.Confidence;
+                        explicitParentCategories.Add(explicitParentCategory);
+                    }
+                    
+                }
+                // Create a dictionary to represent the result
+                var resultMap = new Dictionary<string, List<ExplicitCategory>>
+                {
+                    { "explicitCategories", explicitCategories }, 
+                    { "explicitParentCategories", explicitParentCategories }
+                };
+
+                return new OkObjectResult(resultMap);
             }
             catch (Exception ex)
             {
@@ -89,7 +121,7 @@ namespace ImageAnalyserFunction
             }
         }
 
-        private static async Task<DetectLabelsResponse> DetectLabels(byte[] imageBytes)
+       /* private static async Task<DetectLabelsResponse> DetectLabels(byte[] imageBytes)
         {
             var labelRequest = new DetectLabelsRequest
             {
@@ -100,7 +132,7 @@ namespace ImageAnalyserFunction
             };
 
             return await rekognitionClient.DetectLabelsAsync(labelRequest);
-        }
+        }*/
 
         private static async Task<DetectModerationLabelsResponse> DetectModerationLabels(byte[] imageBytes)
         {
