@@ -2,6 +2,8 @@ using Amazon;
 using Amazon.Rekognition;
 using Amazon.Rekognition.Model;
 using ImageAnalysisAPI;
+using ImageAnalysisAPI.models;
+using ImageAnalysisAPI.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.WebJobs;
@@ -31,20 +33,22 @@ namespace ImageAnalyserFunction
     public static class ImageContentFunction
     {
         private static AmazonRekognitionClient rekognitionClient;
-
+        private static ImageModerationService _imageModerationService;
         [FunctionName("ImageContentFunction")]
         public static async Task<IActionResult> Run(
             [HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req,
             ILogger log)
         {
+
+            var config = new ConfigurationBuilder()
+                   .SetBasePath(Directory.GetCurrentDirectory())
+                   .AddJsonFile("local.settings.json", optional: true, reloadOnChange: true)
+                   .AddEnvironmentVariables()
+                   .Build();
             try
             {
                 // Retrieve settings from Azure Functions configuration
-                var config = new ConfigurationBuilder()
-                    .SetBasePath(Directory.GetCurrentDirectory())
-                    .AddJsonFile("local.settings.json", optional: true, reloadOnChange: true)
-                    .AddEnvironmentVariables()
-                    .Build();
+               
 
 
 
@@ -56,11 +60,28 @@ namespace ImageAnalyserFunction
                 {
                     throw new InvalidOperationException("AWS credentials or region not configured.");
                 }
-
-
                 var credentials = new Amazon.Runtime.BasicAWSCredentials(accessKey, secretKey);
                 rekognitionClient = new AmazonRekognitionClient(credentials, RegionEndpoint.GetBySystemName(region));
+                Console.WriteLine("hello");
+                if (_imageModerationService == null)
+                {
+                    var ConnectionString = config["ConnectionString"];
+                    var DatabaseName = config["DatabaseName"];
+                    var ImagesCollectionName = config["ImagesCollectionName"];
+                    Console.WriteLine($"{ConnectionString}, {DatabaseName}, {ImagesCollectionName}");
+                    // Instantiate the service only if it's not already created
+                    _imageModerationService = new ImageModerationService(ConnectionString, DatabaseName, ImagesCollectionName);
+                }
+            } catch
+            {
 
+            }
+
+        
+
+            
+            try
+            {
                 var file = req.Form.Files[0];
                 var imageBytes = await ReadImageFile(file);
 
@@ -97,13 +118,27 @@ namespace ImageAnalyserFunction
                     
                 }
                 // Create a dictionary to represent the result
-                var resultMap = new Dictionary<string, List<ExplicitCategory>>
+                /*var resultMap = new Dictionary<string, List<ExplicitCategory>>
                 {
                     { "explicitCategories", explicitCategories }, 
                     { "explicitParentCategories", explicitParentCategories }
-                };
+                };*/
 
-                return new OkObjectResult(resultMap);
+                var imageDataObject = new ImageAnalysisAPI.models.Image();
+                imageDataObject.Filename = req.Form.Files[0].FileName;
+                imageDataObject.ImageUrl = "http://placeholder.com";
+                imageDataObject.ExplicitCategories = explicitCategories;
+                imageDataObject.ExplicitParentCategories = explicitParentCategories;
+                //TODO - send image to moderation bucket, send file data, explicicit categories to mongodb
+
+                // TEST - send data to MongoDB
+                await _imageModerationService.CreateAsync(imageDataObject);
+                // TODO - send image to moderation bucket
+                // send explicit image data to db
+
+
+                //TODO - if no explicit categories, return success message
+                return new OkObjectResult(imageDataObject);
             }
             catch (Exception ex)
             {
@@ -138,7 +173,7 @@ namespace ImageAnalyserFunction
         {
             var moderationRequest = new DetectModerationLabelsRequest
             {
-                Image = new Image
+                Image = new Amazon.Rekognition.Model.Image
                 {
                     Bytes = new MemoryStream(imageBytes)
                 }
