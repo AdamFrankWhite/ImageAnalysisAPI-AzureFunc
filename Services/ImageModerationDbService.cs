@@ -7,12 +7,12 @@ using System.Threading.Tasks;
 
 namespace ImageAnalysisAPI.Services
 {
-    internal class ImageModerationService
+    internal class ImageModerationDbService
     {
         
         private readonly IMongoCollection<Image> _imagesCollection;
 
-        public ImageModerationService(
+        public ImageModerationDbService(
             string ConnectionString, string DatabaseName, string ImagesCollectionName)
         {
             var mongoClient = new MongoClient(
