@@ -124,7 +124,7 @@ namespace ImageAnalyserFunction
                     { "explicitParentCategories", explicitParentCategories }
                 };*/
 
-                var imageDataObject = new ImageAnalysisAPI.models.Image();
+                ImageAnalysisAPI.models.Image imageDataObject = new ImageAnalysisAPI.models.Image();
                 imageDataObject.Filename = req.Form.Files[0].FileName;
                 imageDataObject.ImageUrl = "http://placeholder.com";
                 imageDataObject.ExplicitCategories = explicitCategories;
@@ -138,7 +138,27 @@ namespace ImageAnalyserFunction
 
 
                 //TODO - if no explicit categories, return success message
-                return new OkObjectResult(imageDataObject);
+                // Determine the response format based on the Accept header
+                var acceptHeader = req.Headers["Accept"].ToString().ToLower();
+                if (acceptHeader.Contains("application/xml"))
+                {
+                    // Return XML response
+                    var xmlSerializer = new XmlSerializer(typeof(ImageAnalysisAPI.models.Image));
+                    var xmlResult = new StringWriter();
+                    xmlSerializer.Serialize(xmlResult, imageDataObject);
+                    Console.WriteLine(xmlResult.ToString());
+                    return new ContentResult
+                    {
+                        Content = xmlResult.ToString(),
+                        ContentType = "application/xml",
+                        StatusCode = StatusCodes.Status200OK
+                    };
+                }
+                else
+                {
+                    // Return JSON response
+                    return new OkObjectResult(imageDataObject);
+                }
             }
             catch (Exception ex)
             {
