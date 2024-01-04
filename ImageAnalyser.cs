@@ -41,21 +41,15 @@ namespace ImageAnalyserFunction
                    .AddEnvironmentVariables()
                    .Build();
 
-        private static List<ExplicitCategory> explicitCategories;
-        private static List<ExplicitCategory> explicitParentCategories;
+        private static List<ExplicitCategory> explicitCategories = new List<ExplicitCategory>();
+        private static List<ExplicitCategory> explicitParentCategories = new List<ExplicitCategory>();
         private static ImageAnalysisAPI.models.Image imageDataObject = new ImageAnalysisAPI.models.Image();
         [FunctionName("analyse")]
         public static async Task<IActionResult> RunAnalyse(
             [HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req,
             ILogger log)
         {
-
             RunRekognitionClient();
-
-
-
-
-            
             try
             {
                 var file = req.Form.Files[0];
@@ -63,9 +57,6 @@ namespace ImageAnalyserFunction
 
                 await AnalyseImage(imageBytes);
                 SetImageDataObject(file);
-                
-
-
                 //TODO - if no explicit categories, return success message
                 // Determine the response format based on the Accept header
                 var acceptHeader = req.Headers["Accept"].ToString().ToLower();
@@ -117,7 +108,8 @@ namespace ImageAnalyserFunction
             imageDataObject.ImageUrl = "http://placeholder.com";
             imageDataObject.ExplicitCategories = explicitCategories;
             imageDataObject.ExplicitParentCategories = explicitParentCategories;
-            
+            imageDataObject.DateCreated = DateTime.Now;
+
         }
 
         private static async Task<IActionResult> AnalyseImage(byte[] imageBytes)
@@ -131,8 +123,7 @@ namespace ImageAnalyserFunction
                 ExplicitContent = moderationResponse.ModerationLabels
             };
 
-            List<ExplicitCategory> explicitCategories = new List<ExplicitCategory>();
-            List<ExplicitCategory> explicitParentCategories = new List<ExplicitCategory>();
+            
             foreach (var moderationLabel in result.ExplicitContent)
             {
                 // extract secondary moderation labels to list
