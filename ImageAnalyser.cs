@@ -23,33 +23,30 @@ using System.Xml.Serialization;
 namespace ImageAnalyserFunction
 {
     [Serializable]
-    public class DetectionResult
-    {
-        public DetectionResult() { } // Parameterless constructor
-
-        public List<Label> Labels { get; set; }
-        public List<ModerationLabel> ExplicitContent { get; set; }
-    }
-
     public static class ImageContentFunction
     {
+        // Fields
         private static AmazonRekognitionClient rekognitionClient;
-        private static ImageModerationService _imageModerationService;
+        private static ImageModerationDbService _imageModerationService;
+        private static List<ExplicitCategory> explicitCategories = new List<ExplicitCategory>();
+        private static List<ExplicitCategory> explicitParentCategories = new List<ExplicitCategory>();
+        private static ImageAnalysisAPI.models.Image imageDataObject = new ImageAnalysisAPI.models.Image();
+
+        // Config
         private static IConfigurationRoot config = new ConfigurationBuilder()
                    .SetBasePath(Directory.GetCurrentDirectory())
                    .AddJsonFile("local.settings.json", optional: true, reloadOnChange: true)
                    .AddEnvironmentVariables()
                    .Build();
 
-        private static List<ExplicitCategory> explicitCategories = new List<ExplicitCategory>();
-        private static List<ExplicitCategory> explicitParentCategories = new List<ExplicitCategory>();
-        private static ImageAnalysisAPI.models.Image imageDataObject = new ImageAnalysisAPI.models.Image();
+        // Endpoint #1
         [FunctionName("analyse")]
         public static async Task<IActionResult> RunAnalyse(
             [HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req,
             ILogger log)
         {
             RunRekognitionClient();
+            // Process uploaded image file
             try
             {
                 var file = req.Form.Files[0];
@@ -57,7 +54,7 @@ namespace ImageAnalyserFunction
 
                 await AnalyseImage(imageBytes);
                 SetImageDataObject(file);
-                //TODO - if no explicit categories, return success message
+
                 // Determine the response format based on the Accept header
                 var acceptHeader = req.Headers["Accept"].ToString().ToLower();
                 if (acceptHeader.Contains("application/xml"))
@@ -87,7 +84,7 @@ namespace ImageAnalyserFunction
             }
         }
 
-
+        // Endpoint #2
         [FunctionName("moderate")]
         public static async Task<IActionResult> RunModerate(
             [HttpTrigger(AuthorizationLevel.Function, "post", Route = null)] HttpRequest req,
@@ -99,31 +96,28 @@ namespace ImageAnalyserFunction
             return new OkObjectResult(moderationResult);
         }
 
+        // Utility classes
         private static void SetImageDataObject(IFormFile file)
         {
-            
-            // add image to user imagemoderation queue db record
-            imageDataObject.OwnerId = "owner";
+            // add values to static imageDataObject
+            imageDataObject.OwnerId = "owner"; // placeholder
             imageDataObject.Filename = file.FileName;
-            imageDataObject.ImageUrl = "http://placeholder.com";
+            imageDataObject.ImageUrl = "http://placeholder.com"; // placeholder
             imageDataObject.ExplicitCategories = explicitCategories;
             imageDataObject.ExplicitParentCategories = explicitParentCategories;
             imageDataObject.DateCreated = DateTime.Now;
-
         }
 
         private static async Task<IActionResult> AnalyseImage(byte[] imageBytes)
         {
             //var labelResponse = await DetectLabels(imageBytes);
             var moderationResponse = await DetectModerationLabels(imageBytes);
-
             var result = new DetectionResult
             {
                 //Labels = labelResponse.Labels,
                 ExplicitContent = moderationResponse.ModerationLabels
             };
 
-            
             foreach (var moderationLabel in result.ExplicitContent)
             {
                 // extract secondary moderation labels to list
@@ -149,7 +143,7 @@ namespace ImageAnalyserFunction
         }
         private static void RunRekognitionClient()
         {
-            // singleton 
+            // Singleton 
             if (rekognitionClient == null)
             {
                 try
@@ -164,10 +158,8 @@ namespace ImageAnalyserFunction
                         throw new InvalidOperationException("AWS credentials or region not configured.");
                     }
                     var credentials = new Amazon.Runtime.BasicAWSCredentials(accessKey, secretKey);
+                    // Instantiate AWS Rekognition client
                     rekognitionClient = new AmazonRekognitionClient(credentials, RegionEndpoint.GetBySystemName(region));
-
-
-
                 }
                 catch (Exception ex)
                 {
@@ -179,21 +171,19 @@ namespace ImageAnalyserFunction
         }
             private static async Task<IActionResult> UseModerationQueueService(IFormFile file)
         {
+           
             if (_imageModerationService == null)
             {
+                // Fetch db connection config variables
                 var ConnectionString = config["ConnectionString"];
                 var DatabaseName = config["DatabaseName"];
                 var ImagesCollectionName = config["ImagesCollectionName"];
-                Console.WriteLine($"{ConnectionString}, {DatabaseName}, {ImagesCollectionName}");
-                // Instantiate the service only if it's not already created
-                _imageModerationService = new ImageModerationService(ConnectionString, DatabaseName, ImagesCollectionName);
+                // Singleton - instantiate the service only if it's not already created
+                _imageModerationService = new ImageModerationDbService(ConnectionString, DatabaseName, ImagesCollectionName);
             }
-            
-            
+
             SetImageDataObject(file);
-            //TODO - send image to moderation bucket, send file data, explicicit categories to mongodb
-            // add image to user imagemoderation queue db record
-            // send explicit image data to db
+            // add explicit image data to user imagemoderation queue db record
             try
             {
                 await _imageModerationService.CreateAsync(imageDataObject);
@@ -202,25 +192,12 @@ namespace ImageAnalyserFunction
             {
                 return new OkObjectResult("There has been a problem");
             }
-            // TODO - send image to moderation bucket
             
             
             
 
         }
 
-       /* private static ImageAnalysisAPI.models.Image createImageModel(string filename)
-        {
-            // add image to user imagemoderation queue db record
-            ImageAnalysisAPI.models.Image imageDataObject = new ImageAnalysisAPI.models.Image();
-            imageDataObject.OwnerId = "owner";
-            imageDataObject.Filename = filename;
-            imageDataObject.ImageUrl = "http://placeholder.com";
-            imageDataObject.ExplicitCategories = explicitCategories;
-            imageDataObject.ExplicitParentCategories = explicitParentCategories;
-
-            return imageDataObject;
-        }*/
         private static async Task<byte[]> ReadImageFile(IFormFile file)
         {
             using (var imageStream = file.OpenReadStream())
@@ -230,19 +207,6 @@ namespace ImageAnalyserFunction
                 return imageBytes;
             }
         }
-
-       /* private static async Task<DetectLabelsResponse> DetectLabels(byte[] imageBytes)
-        {
-            var labelRequest = new DetectLabelsRequest
-            {
-                Image = new Image
-                {
-                    Bytes = new MemoryStream(imageBytes)
-                }
-            };
-
-            return await rekognitionClient.DetectLabelsAsync(labelRequest);
-        }*/
 
         private static async Task<DetectModerationLabelsResponse> DetectModerationLabels(byte[] imageBytes)
         {
@@ -256,5 +220,21 @@ namespace ImageAnalyserFunction
 
             return await rekognitionClient.DetectModerationLabelsAsync(moderationRequest);
         }
+
+
+        /* private static async Task<DetectLabelsResponse> DetectLabels(byte[] imageBytes)
+         {
+             var labelRequest = new DetectLabelsRequest
+             {
+                 Image = new Image
+                 {
+                     Bytes = new MemoryStream(imageBytes)
+                 }
+             };
+
+             return await rekognitionClient.DetectLabelsAsync(labelRequest);
+         }*/
+
+
     }
 }
