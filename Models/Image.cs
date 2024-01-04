@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace ImageAnalysisAPI.models { 
 
-    internal class Image
+    public class Image
     {
         [BsonId]
         [BsonRepresentation(BsonType.ObjectId)]
